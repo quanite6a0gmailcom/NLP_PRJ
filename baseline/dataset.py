@@ -49,8 +49,6 @@ class CustomTranslationDataset(Dataset):
         tgt_tensor = torch.tensor([self.tgt_vocab.word2idx["<BOS>"]] + tgt_encoded + [self.tgt_vocab.word2idx["<EOS>"]], dtype=torch.long)
 
         return src_tensor, tgt_tensor
-    
-import torch
 
 def collate_fn(batch):
     PAD_IDX = 0
@@ -86,78 +84,3 @@ def collate_fn(batch):
             
     return src_padded, tgt_padded
 
-
-
-# 2. Khởi tạo Dataset
-print("--- ĐANG KHỞI TẠO DATASET ---")
-dataset = CustomTranslationDataset("C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.ja", "C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.vi")
-
-# 3. Kiểm tra kích thước Vocab
-print("\n[1] KÍCH THƯỚC TỪ VỰNG")
-print(f"- Vocab Tiếng Nhật: {dataset.src_vocab.vocab_size} từ")
-print(f"- Vocab Tiếng Việt: {dataset.tgt_vocab.vocab_size} từ")
-
-# 4. In thử một vài từ trong từ điển (Word -> ID)
-print("\n[2] BẢNG ÁNH XẠ TỪ ĐIỂN (10 từ đầu tiên)")
-# Ép kiểu list để chỉ lấy 10 phần tử đầu tiên in ra màn hình
-print("- Tiếng Nhật:", list(dataset.src_vocab.word2idx.items())[:10])
-print("- Tiếng Việt:", list(dataset.tgt_vocab.word2idx.items())[:10])
-
-# 5. Test tính năng Encode (Mã hóa) và Decode (Giải mã)
-print("\n[3] KIỂM TRA QUY TRÌNH MÃ HÓA & GIẢI MÃ")
-
-# Test với Tiếng Nhật
-sample_ja = ["私", "は", "学生", "です", "。"]
-encoded_ja = dataset.src_vocab.encode(sample_ja)
-decoded_ja = dataset.src_vocab.decode(encoded_ja)
-print(f"JA Gốc     : {sample_ja}")
-print(f"JA Mã hóa  : {encoded_ja}")
-print(f"JA Giải mã : {decoded_ja}")
-
-# Test với Tiếng Việt
-sample_vi = ["Tôi", "là", "sinh_viên", "."]
-encoded_vi = dataset.tgt_vocab.encode(sample_vi)
-decoded_vi = dataset.tgt_vocab.decode(encoded_vi)
-print(f"\nVI Gốc     : {sample_vi}")
-print(f"VI Mã hóa  : {encoded_vi}")
-print(f"VI Giải mã : {decoded_vi}")
-
-# 6. Test từ OOV (Out-Of-Vocabulary) để xem có ra ID của <UNK> (số 3) không
-print("\n[4] KIỂM TRA TỪ CHƯA TỪNG XUẤT HIỆN (OOV)")
-oov_word = ["Doraemon"]
-print(f"Từ lạ '{oov_word}' bị mã hóa thành ID: {dataset.src_vocab.encode(oov_word)}")
-
-# 7. Xem thử Tensor đầu ra của Dataset (Đã gắn BOS và EOS chưa)
-print("\n[5] KIỂM TRA TENSOR ĐẦU RA")
-src_tensor, tgt_tensor = dataset[0] # Lấy cặp câu đầu tiên
-print(f"- Source Tensor (kết thúc bằng EOS {dataset.src_vocab.word2idx['<EOS>']}):\n  {src_tensor}")
-print(f"- Target Tensor (bắt đầu bằng BOS {dataset.tgt_vocab.word2idx['<BOS>']}, kết thúc bằng EOS):\n  {tgt_tensor}")
-
-print("\n[6] KIỂM TRA QUÁ TRÌNH CHIA BATCH (DATALOADER)")
-
-# Cài đặt kích thước Batch (Ví dụ: 2 câu một lượt)
-BATCH_SIZE = 2
-
-# Khởi tạo DataLoader
-train_dataloader = DataLoader(
-    dataset, 
-    batch_size=BATCH_SIZE, 
-    shuffle=True,           # Trộn ngẫu nhiên dữ liệu ở mỗi Epoch
-    collate_fn=collate_fn,  # Gọi hàm đệm động
-    drop_last=False         # Nếu batch cuối không đủ 2 câu thì vẫn lấy
-)
-
-# Chạy thử 1 vòng lặp để kéo Batch đầu tiên ra kiểm tra
-for batch_idx, (src_batch, tgt_batch) in enumerate(train_dataloader):
-    print(f"--- BATCH {batch_idx + 1} ---")
-    print(f"Kích thước Source Tensor: {src_batch.shape}")
-    print(f"Kích thước Target Tensor: {tgt_batch.shape}")
-    
-    print("\nChi tiết Source Tensor (Lưu ý các số 0 ở cuối nếu bị đệm):")
-    print(src_batch)
-    
-    print("\nChi tiết Target Tensor:")
-    print(tgt_batch)
-    
-    # Chỉ in 1 batch rồi dừng để kiểm tra
-    break

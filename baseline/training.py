@@ -3,106 +3,145 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from transformer_layers import *
+from dataset import *
+import os
 
-# 1. Định nghĩa các Special Tokens
-PAD_IDX = 0  # Padding
-BOS_IDX = 1  # Beginning of Sequence
-EOS_IDX = 2  # End of Sequence
+SRC_FILE_TRAIN = "C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.ja"
+TGT_FILE_TRAIN = "C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.vi"
+SRC_FILE_VAL = "C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.ja"
+TGT_FILE_VAL = "C:\\NLP_PRJ\\TEDjavi_106K\\dev2010.ja-vi.vi"
 
-# Giả lập tham số từ vựng (ví dụ cho bài toán dịch máy)
-src_vocab_size = 5000
-tgt_vocab_size = 7000
-max_seq_length = 50
-batch_size = 32
+BATCH_SIZE = 32
+MAX_LEN = 50
+D_MODEL = 512
+NUM_HEADS = 8
+NUM_LAYERS = 4
+D_FF = 1024
+DROPOUT = 0.1
+EPOCHS = 50
+LEARNING_RATE = 0.001
 
-# 2. Tạo Dataset giả lập (Dummy Dataset)
-class DummyTranslationDataset(Dataset):
-    def __init__(self, num_samples, max_len):
-        self.num_samples = num_samples
-        # Sinh ngẫu nhiên dữ liệu, đảm bảo có chứa PAD ở cuối
-        self.src_data = torch.randint(3, src_vocab_size, (num_samples, max_len))
-        self.tgt_data = torch.randint(3, tgt_vocab_size, (num_samples, max_len))
-        
-        # Thêm BOS và EOS vào target để huấn luyện
-        self.tgt_data[:, 0] = BOS_IDX
-        self.tgt_data[:, -1] = EOS_IDX
+def count_parameters(model):
+    """Đếm tổng số tham số có thể cập nhật trong mô hình"""
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+# ============================================
+# 2. DEFINE TRAIN FUNCTION & EVALUATE FUNCTION
+# ============================================
 
-    def __len__(self):
-        return self.num_samples
-
-    def __getitem__(self, idx):
-        return self.src_data[idx], self.tgt_data[idx]
-
-dataset = DummyTranslationDataset(num_samples=1000, max_len=max_seq_length)
-dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-
-# Cấu hình thiết bị (Sử dụng GPU/CUDA nếu có)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# Khởi tạo mô hình Transformer (sử dụng class đã định nghĩa ở phần trước)
-model = TransformerModel(
-    src_vocab_size=src_vocab_size, 
-    tgt_vocab_size=tgt_vocab_size, 
-    d_model=512, 
-    num_heads=8, 
-    num_layers=6, 
-    d_ff=2048, 
-    max_seq_length=max_seq_length, 
-    dropout=0.1
-).to(device)
-
-# 3. Khởi tạo Optimizer và Loss Function
-# Sử dụng Adam optimizer với tham số chuẩn từ bài báo
-optimizer = optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.98), eps=1e-9)
-
-# Quan trọng: ignore_index=PAD_IDX giúp model không tính loss cho các token Padding
-criterion = nn.CrossEntropyLoss(ignore_index=PAD_IDX)
-
-# 4. Bắt đầu vòng lặp huấn luyện
-EPOCHS = 10
-
-for epoch in range(EPOCHS):
-    model.train() # Chuyển mô hình sang chế độ huấn luyện (kích hoạt Dropout, LayerNorm)
+def train_epoch(model, dataloader, optimizer, criterion, device):
+    model.train()
     epoch_loss = 0
-    
     for batch_idx, (src, tgt) in enumerate(dataloader):
-        src = src.to(device)
-        tgt = tgt.to(device)
+        src, tgt = src.to(device), tgt.to(device)
         
-        # Kỹ thuật Teacher Forcing
-        # Input cho decoder: từ đầu đến gần cuối (không có EOS)
         tgt_input = tgt[:, :-1]
-        
-        # Target kỳ vọng để tính loss: từ vị trí thứ 2 đến cuối (không có BOS)
         tgt_expected = tgt[:, 1:]
         
-        # Xóa dốc gradient của batch trước
         optimizer.zero_grad()
-        
-        # Forward pass (Truyền xuôi)
-        # Kích thước output: (batch_size, seq_length - 1, tgt_vocab_size)
         output = model(src, tgt_input)
         
-        # Reshape lại để đưa vào hàm CrossEntropyLoss
-        # Output dẹt: (batch_size * (seq_length - 1), tgt_vocab_size)
-        # Expected dẹt: (batch_size * (seq_length - 1))
-        output_flatten = output.contiguous().view(-1, tgt_vocab_size)
+        output_dim = output.shape[-1]
+        output_flatten = output.contiguous().view(-1, output_dim)
         tgt_expected_flatten = tgt_expected.contiguous().view(-1)
         
-        # Tính toán độ lỗi (Loss)
         loss = criterion(output_flatten, tgt_expected_flatten)
-        
-        # Backward pass (Truyền ngược) và cập nhật trọng số
         loss.backward()
         
-        # Có thể thêm Gradient Clipping ở đây để tránh exploding gradients
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-        
         optimizer.step()
         
         epoch_loss += loss.item()
         
-        if batch_idx % 10 == 0:
-            print(f"Epoch: {epoch+1}/{EPOCHS} | Batch: {batch_idx} | Loss: {loss.item():.4f}")
+        if batch_idx % 50 == 0:
+            print(f"   [Train] Batch {batch_idx}/{len(dataloader)} | Loss: {loss.item():.4f}")
             
-    print(f"==> Kết thúc Epoch {epoch+1} | Loss trung bình: {epoch_loss / len(dataloader):.4f}\n")
+    return epoch_loss / len(dataloader)
+
+def evaluate_epoch(model, dataloader, criterion, device):
+    model.eval() # Tắt Dropout và LayerNorm
+    epoch_loss = 0
+    with torch.no_grad(): # Không tính Gradient để tiết kiệm RAM
+        for src, tgt in dataloader:
+            src, tgt = src.to(device), tgt.to(device)
+            
+            tgt_input = tgt[:, :-1]
+            tgt_expected = tgt[:, 1:]
+            
+            output = model(src, tgt_input)
+            
+            output_dim = output.shape[-1]
+            output_flatten = output.contiguous().view(-1, output_dim)
+            tgt_expected_flatten = tgt_expected.contiguous().view(-1)
+            
+            loss = criterion(output_flatten, tgt_expected_flatten)
+            epoch_loss += loss.item()
+            
+    return epoch_loss / len(dataloader)
+
+# ==========================================
+# 3. VÒNG LẶP CHÍNH (MAIN LOOP)
+# ==========================================
+if __name__ == "__main__":
+    # Thiết lập thiết bị
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Đang sử dụng thiết bị: {device}")
+    
+    # Tạo thư mục lưu model nếu chưa có
+    os.makedirs("checkpoints", exist_ok=True)
+
+    print("\n--- BƯỚC 1: CHUẨN BỊ DỮ LIỆU ---")
+    train_dataset = CustomTranslationDataset(SRC_FILE_TRAIN, TGT_FILE_TRAIN)
+    # Tái sử dụng Vocab của tập Train cho tập Val để tránh lệch ID
+    val_dataset = CustomTranslationDataset(SRC_FILE_VAL, TGT_FILE_VAL)
+    val_dataset.src_vocab = train_dataset.src_vocab
+    val_dataset.tgt_vocab = train_dataset.tgt_vocab
+
+    SRC_VOCAB_SIZE = train_dataset.src_vocab.vocab_size
+    TGT_VOCAB_SIZE = train_dataset.tgt_vocab.vocab_size
+    print(f"Vocab Source (Nhật): {SRC_VOCAB_SIZE} | Vocab Target (Việt): {TGT_VOCAB_SIZE}")
+
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fn)
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=collate_fn)
+
+    print("\n--- BƯỚC 2: KHỞI TẠO MÔ HÌNH ---")
+    model = TransformerModel(
+        src_vocab_size=SRC_VOCAB_SIZE,
+        tgt_vocab_size=TGT_VOCAB_SIZE,
+        d_model=D_MODEL,
+        num_heads=NUM_HEADS,
+        num_layers=NUM_LAYERS,
+        d_ff=D_FF,
+        max_seq_length=MAX_LEN,
+        dropout=DROPOUT
+    ).to(device)
+
+    total_params = count_parameters(model)
+    print(f"Tổng số tham số của mô hình: {total_params:,} parameters")
+
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, betas=(0.9, 0.98), eps=1e-9)
+    # ignore_index=0 để bỏ qua padding
+    criterion = nn.CrossEntropyLoss(ignore_index=0) 
+
+    print("\n--- BƯỚC 3: BẮT ĐẦU HUẤN LUYỆN ---")
+    best_val_loss = float('inf')
+
+    for epoch in range(EPOCHS):
+        print(f"\n[Epoch {epoch+1}/{EPOCHS}]")
+        
+        train_loss = train_epoch(model, train_dataloader, optimizer, criterion, device)
+        val_loss = evaluate_epoch(model, val_dataloader, criterion, device)
+        
+        print(f"==> Tổng kết Epoch {epoch+1}: Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+        
+        # Lưu checkpoint nếu Validation Loss giảm (Mô hình tốt lên)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            checkpoint_path = f"checkpoints/best_model.pt"
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss,
+            }, checkpoint_path)
+            print(f"*** Đã lưu mô hình tốt nhất tại: {checkpoint_path} ***")
+
