@@ -42,21 +42,22 @@ class InputEmbeddings(nn.Module):
         self.tokenizer = BPEmb(
             lang=lang, 
             vs=25000, 
-            dim=300, 
-            model_file=model_file, 
-            emb_file=emb_file
+            dim=300
         )
 
         self.vocab_size = self.tokenizer.vocab_size
         pretrained_weights = torch.tensor(self.tokenizer.vectors)
         self.embedding = nn.Embedding.from_pretrained(pretrained_weights, freeze=False)
+        self.projection = nn.Linear(300, d_model)
                 
 
 
     def forward(self, x):
-        # (batch, seq_len) --> (batch, seq_len, d_model)
-        # Multiply by sqrt(d_model) to scale the embeddings according to the paper
-        return self.embedding(x) * math.sqrt(self.d_model)
+        embed_out = self.embedding(x)
+        
+        proj_out = self.projection(embed_out)
+        
+        return proj_out * math.sqrt(self.d_model)
     
 class PositionalEncoding(nn.Module):
 
@@ -237,7 +238,7 @@ class Transformer(nn.Module):
         # (batch, seq_len, vocab_size)
         return self.projection_layer(x)
     
-def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int=512, N: int=4, h: int=10, dropout: float=0.2, d_ff: int=1024) -> Transformer:
+def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int, tgt_seq_len: int, d_model: int=512, N: int=4, h: int=8, dropout: float=0.2, d_ff: int=1024) -> Transformer:
     
     lang_src = 'ja'
     lang_tgt = 'vi'

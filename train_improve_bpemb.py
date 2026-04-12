@@ -313,8 +313,8 @@ def get_or_build_tokenizer(config, ds, lang):
 def ds_custom():
     # 1. Khai báo đường dẫn tới 2 file text của bạn
     # (Hãy thay đổi tên file và mã ngôn ngữ cho đúng với bài toán của bạn)
-    file_src_path = 'dataset_bpemb/train.ja-vi.ja' 
-    file_tgt_path = 'dataset_bpemb/train.ja-vi.vi'
+    file_src_path = 'dataset_bpemb/all.ja' 
+    file_tgt_path = 'dataset_bpemb/all.vi'
 
     lang_src = 'ja'
     lang_tgt = 'vi'
@@ -455,21 +455,12 @@ def get_ds(config):
     ds_raw_val = ds_custom_val()
     ds_raw_test = ds_custom_test()
 
-    print("Hello")
-
-    path_to_model_vi = "bpemb_vn/vi.wiki.bpe.vs25000.model"
-    path_to_txt_vi = "bpemb_vn/vi.wiki.bpe.vs25000.d300.w2v.txt"
-
-    path_to_model_ja = "bpemb_ja/ja.wiki.bpe.vs25000.model"
-    path_to_txt_ja = "bpemb_ja/ja.wiki.bpe.vs25000.d300.w2v.txt"
 
     # Build tokenizer
     tokenizer_tgt = BPEmb(
         lang="vi",
         vs=25000,
-        dim=300,
-        model_file=path_to_model_vi,
-        emb_file=path_to_txt_vi
+        dim=300
     )
 
     print("Đã load thành công BPEmb từ local!")
@@ -479,9 +470,7 @@ def get_ds(config):
     tokenizer_src = BPEmb(
         lang="ja",
         vs=25000,
-        dim=300,
-        model_file=path_to_model_ja,
-        emb_file=path_to_txt_ja
+        dim=300
     )
 
 
