@@ -362,8 +362,8 @@ def get_or_build_tokenizer(config, ds, lang):
 def ds_custom():
     # 1. Khai báo đường dẫn tới 2 file text của bạn
     # (Hãy thay đổi tên file và mã ngôn ngữ cho đúng với bài toán của bạn)
-    file_src_path = 'dataset_baseline1/train.ja-vi.ja' 
-    file_tgt_path = 'dataset_baseline1/train.ja-vi.vi'
+    file_src_path = 'dataset_baseline1/all.ja' 
+    file_tgt_path = 'dataset_baseline1/all.vi'
 
     lang_src = 'ja'
     lang_tgt = 'vi'
