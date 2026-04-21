@@ -6,7 +6,7 @@ def get_config():
         "num_epochs": 80,
         "lr": 0.00001,
         "seq_len": 200,
-        "d_model": 300,
+        "d_model": 512,
         "datasource": 'vn_jp',
         "lang_src": "ja",
         "lang_tgt": "vi",
