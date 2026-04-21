@@ -517,8 +517,8 @@ def get_ds(config):
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer_src, tokenizer_tgt
 
-def get_model(config, vocab_src_len, vocab_tgt_len):
-    model = build_transformer(vocab_src_len, vocab_tgt_len, config["seq_len"], config['seq_len'], d_model=config['d_model'])
+def get_model(config, vocab_tgt_len):
+    model = build_transformer(vocab_tgt_len, config["seq_len"], config['seq_len'], d_model=config['d_model'])
     return model
 
 def train_model(config):
@@ -541,7 +541,7 @@ def train_model(config):
 
     train_dataloader, val_dataloader,test_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
     print("Hello")
-    model = get_model(config, tokenizer_src.vocab_size, tokenizer_tgt.vocab_size).to(device)
+    model = get_model(config, tokenizer_tgt.vocab_size).to(device)
     # Tổng số tham số có thể huấn luyện (Trainable Parameters)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('-'*50)
