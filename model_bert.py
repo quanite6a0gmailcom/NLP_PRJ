@@ -70,7 +70,7 @@ class PositionalEncoding(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.seq_len = seq_len
-        self.dropout = nn.Dropout(0.1)
+        self.dropout = nn.Dropout(dropout)
         # Create a matrix of shape (seq_len, d_model)
         pe = torch.zeros(seq_len, d_model)
         # Create a vector of shape (seq_len)
@@ -92,13 +92,13 @@ class PositionalEncoding(nn.Module):
 
 class ResidualConnection(nn.Module):
     
-        def __init__(self, features: int, dropout: float) -> None:
-            super().__init__()
-            self.dropout = nn.Dropout(dropout)
-            self.norm = LayerNormalization(features)
-    
-        def forward(self, x, sublayer):
-            return x + self.dropout(sublayer(self.norm(x)))
+    def __init__(self, features: int, dropout: float) -> None:
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.norm = LayerNormalization(features)
+
+    def forward(self, x, sublayer):
+        return x + self.dropout(sublayer(self.norm(x)))
 
 class MultiHeadAttentionBlock(nn.Module):
 
@@ -211,7 +211,7 @@ class ProjectionLayer(nn.Module):
         super().__init__()
         self.proj = nn.Linear(d_model, vocab_size)
 
-    def forward(self, x) -> None:
+    def forward(self, x) -> torch.Tensor:
         # (batch, seq_len, d_model) --> (batch, seq_len, vocab_size)
         return self.proj(x)
     
@@ -280,8 +280,11 @@ def build_transformer(src_vocab_size: int, tgt_vocab_size: int, src_seq_len: int
     transformer = Transformer(encoder, decoder, src_embed, tgt_embed, src_pos, tgt_pos, projection_layer)
     
     # Initialize the parameters
-    for p in transformer.parameters():
+    for name, p in transformer.named_parameters():
         if p.dim() > 1:
+            # Skip pre-trained embeddings để không đè lên weights đã load
+            if 'src_embed.embedding.weight' in name or 'tgt_embed.embedding.weight' in name:
+                continue
             nn.init.xavier_uniform_(p)
     
     return transformer

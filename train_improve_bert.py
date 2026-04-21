@@ -88,7 +88,7 @@ def beam_search_decode_new(model, beam_size, source, source_mask, tokenizer_src,
 
             candidate_mask = causal_mask(candidate.size(1)).type_as(source_mask).to(device)
             out = model.decode(encoder_output, source_mask, candidate, candidate_mask)
-            prob = model.project(out[:, -1])
+            prob = torch.log_softmax(model.project(out[:, -1]), dim=-1)
             topk_prob, topk_idx = torch.topk(prob, beam_size, dim=1)
             
             for i in range(beam_size):
@@ -533,7 +533,7 @@ def train_model(config):
     else:
         print('No model to preload, starting from scratch')
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.pad_token_id, label_smoothing=0.1).to(device)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_tgt.pad_token_id, label_smoothing=0.1).to(device)
     # Khởi tạo kỷ lục Val Loss ban đầu là Vô cực
     best_val_loss = float('inf')
     for epoch in range(initial_epoch, config['num_epochs']):

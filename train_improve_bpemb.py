@@ -5,6 +5,7 @@ from config import get_config, get_weights_file_path, latest_weights_file_path
 from bpemb import BPEmb
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, random_split
 from torch.optim.lr_scheduler import LambdaLR
 
@@ -94,7 +95,8 @@ def beam_search_decode_new(model, beam_size, source, source_mask, tokenizer_src,
 
             candidate_mask = causal_mask(candidate.size(1)).type_as(source_mask).to(device)
             out = model.decode(encoder_output, source_mask, candidate, candidate_mask)
-            prob = model.project(out[:, -1])
+            prob = F.log_softmax(model.project(out[:, -1]), dim=-1)
+
             topk_prob, topk_idx = torch.topk(prob, beam_size, dim=1)
             
             for i in range(beam_size):
