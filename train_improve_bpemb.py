@@ -511,9 +511,9 @@ def get_ds(config):
     
 
     # TẮT SHUFFLE CHO TẬP VAL VÀ TEST
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False)
-    test_dataloader = DataLoader(test_ds, batch_size=1, shuffle=False)
+    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, num_workers=4, pin_memory=True, persistent_workers=True)
+    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
+    test_dataloader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=2, pin_memory=True, persistent_workers=True)
 
     return train_dataloader, val_dataloader, test_dataloader, tokenizer_src, tokenizer_tgt
 
@@ -526,8 +526,8 @@ def train_model(config):
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.has_mps or torch.backends.mps.is_available() else "cpu"
     print("Using device:", device)
     if (device == 'cuda'):
-        print(f"Device name: {torch.cuda.get_device_name(device.index)}")
-        print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
+        print(f"Device name: {torch.cuda.get_device_name(0)}")
+        print(f"Device memory: {torch.cuda.get_device_properties(0).total_memory / 1024 ** 3} GB")
     elif (device == 'mps'):
         print(f"Device name: <mps>")
     else:
@@ -542,6 +542,9 @@ def train_model(config):
     train_dataloader, val_dataloader,test_dataloader, tokenizer_src, tokenizer_tgt = get_ds(config)
     print("Hello")
     model = get_model(config, tokenizer_tgt.vocab_size).to(device)
+    if hasattr(torch, 'compile') and device.type == 'cuda':
+        model = torch.compile(model)
+        print("torch.compile enabled")
     # Tổng số tham số có thể huấn luyện (Trainable Parameters)
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print('-'*50)
@@ -551,6 +554,8 @@ def train_model(config):
     writer = SummaryWriter(config['experiment_name'])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps=1e-9)
+    use_amp = device.type == 'cuda'
+    scaler = torch.amp.GradScaler('cuda', enabled=use_amp)
 
     # If the user specified a model to preload before training, load it
     initial_epoch = 0
@@ -575,7 +580,6 @@ def train_model(config):
     # Khởi tạo kỷ lục Val Loss ban đầu là Vô cực
     best_val_loss = float('inf')
     for epoch in range(initial_epoch, config['num_epochs']):
-        torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing Epoch {epoch:02d}")
         for batch in batch_iterator:
@@ -585,27 +589,20 @@ def train_model(config):
             encoder_mask = batch['encoder_mask'].to(device) # (B, 1, 1, seq_len)
             decoder_mask = batch['decoder_mask'].to(device) # (B, 1, seq_len, seq_len)
 
-            # Run the tensors through the encoder, decoder and the projection layer
-            encoder_output = model.encode(encoder_input, encoder_mask) # (B, seq_len, d_model)
-            decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask) # (B, seq_len, d_model)
-            proj_output = model.project(decoder_output) # (B, seq_len, vocab_size)
-
-            # Compare the output with the label
             label = batch['label'].to(device) # (B, seq_len)
 
-            # Compute the loss using a simple cross entropy
-            loss = loss_fn(proj_output.view(-1, tokenizer_tgt.vocab_size), label.view(-1))
+            with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
+                encoder_output = model.encode(encoder_input, encoder_mask) # (B, seq_len, d_model)
+                decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask) # (B, seq_len, d_model)
+                proj_output = model.project(decoder_output) # (B, seq_len, vocab_size)
+                loss = loss_fn(proj_output.view(-1, tokenizer_tgt.vocab_size), label.view(-1))
+
             batch_iterator.set_postfix({"loss": f"{loss.item():6.3f}"})
-
-            # Log the loss
             writer.add_scalar('train loss', loss.item(), global_step)
-            writer.flush()
 
-            # Backpropagate the loss
-            loss.backward()
-
-            # Update the weights
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             optimizer.zero_grad(set_to_none=True)
 
             global_step += 1
@@ -630,13 +627,11 @@ def train_model(config):
                 decoder_mask = batch['decoder_mask'].to(device)
                 label = batch['label'].to(device)
 
-                # Lan truyền xuôi (Forward pass) y hệt như Train
-                encoder_output = model.encode(encoder_input, encoder_mask)
-                decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-                proj_output = model.project(decoder_output)
-
-                # Tính Loss
-                val_loss = loss_fn(proj_output.view(-1, tokenizer_tgt.vocab_size), label.view(-1))
+                with torch.autocast(device_type='cuda', dtype=torch.bfloat16, enabled=use_amp):
+                    encoder_output = model.encode(encoder_input, encoder_mask)
+                    decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
+                    proj_output = model.project(decoder_output)
+                    val_loss = loss_fn(proj_output.view(-1, tokenizer_tgt.vocab_size), label.view(-1))
                 val_loss_total += val_loss.item()
                 
         # Tính trung bình Validation Loss của toàn bộ Epoch
