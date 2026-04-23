@@ -8,14 +8,14 @@ normalizer = MosesPunctNormalizer(lang='en')
 
 def process_japanese_line(text):
     words = [word.surface for word in tagger(text.strip())]
-    return " ".join(words)
+    return text
 
 def process_vietnamese_line(text):
     # Bước 1: Dọn rác
     clean_text = normalizer.normalize(text.strip())
     # Bước 2: Cắt từ (Đã xóa dòng gán đè sai logic)
     # final_text = ViTokenizer.tokenize(clean_text)
-    return final_text
+    return clean_text
 
 input_ja_file = "dataset/all.ja"
 input_vi_file = "dataset/all.vi"
